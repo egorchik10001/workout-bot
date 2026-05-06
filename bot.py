@@ -1,11 +1,10 @@
 import os
 import json
-import re
 from datetime import datetime
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    filters, ContextTypes
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes
 )
 
 TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ВАШ_ТОКЕН_СЮДА")
@@ -13,70 +12,68 @@ DATA_FILE = "data.json"
 
 EXERCISES = {
     "upper-a": {
-        "name": "День 1 — Upper A (Грудь + Спина)",
-        "exercises": [
-            "Жим штанги лёжа",
-            "Жим гантелей по наклонной",
-            "Разводка гантелей лёжа",
-            "Тяга верхнего блока",
-            "Тяга Т-грифа / гантели одной рукой",
-            "Разведение бабочки",
+        "name": "Upper A",
+        "sub": "Грудь + Спина",
+        "emoji": "💪",
+        "sections": [
+            {"name": "Грудь", "exs": [
+                {"id": "bench",   "name": "Жим штанги лёжа",                 "sets": "4 × 6–8"},
+                {"id": "incline", "name": "Жим гантелей по наклонной",       "sets": "3 × 8–10"},
+                {"id": "fly",     "name": "Разводка гантелей лёжа",          "sets": "3 × 12"},
+            ]},
+            {"name": "Спина", "exs": [
+                {"id": "lat",  "name": "Тяга верхнего блока",                "sets": "4 × 8–10"},
+                {"id": "tbar", "name": "Тяга Т-грифа / гантели одной рукой", "sets": "4 × 6–8"},
+                {"id": "rear", "name": "Разведение бабочки",                 "sets": "3 × 15"},
+            ]},
         ]
     },
     "lower": {
-        "name": "День 2 — Lower (Ноги + Пресс)",
-        "exercises": [
-            "Болгарские сплит-приседания",
-            "Жим ногами",
-            "Разгибание ног в тренажёре",
-            "Румынская тяга с гантелями",
-            "Сгибание ног лёжа",
-            "Подъём на носки сидя",
-            "Скручивания на скамье",
-            "Подъём ног в висе",
+        "name": "Lower",
+        "sub": "Ноги + Пресс",
+        "emoji": "🦵",
+        "sections": [
+            {"name": "Квадрицепс и ягодицы", "exs": [
+                {"id": "bulgarian", "name": "Болгарские сплит-приседания", "sets": "3 × 8–10"},
+                {"id": "legpress",  "name": "Жим ногами",                  "sets": "3 × 10–12"},
+                {"id": "legext",    "name": "Разгибание ног в тренажёре",  "sets": "3 × 12–15"},
+            ]},
+            {"name": "Бицепс бедра", "exs": [
+                {"id": "rdl",     "name": "Румынская тяга с гантелями", "sets": "4 × 8–10"},
+                {"id": "legcurl", "name": "Сгибание ног лёжа",          "sets": "3 × 12"},
+            ]},
+            {"name": "Икры и пресс", "exs": [
+                {"id": "calfsit",  "name": "Подъём на носки сидя",  "sets": "4 × 15–20"},
+                {"id": "crunch",   "name": "Скручивания на скамье", "sets": "3 × 15–20"},
+                {"id": "legraise", "name": "Подъём ног в висе",     "sets": "3 × 12–15"},
+            ]},
         ]
     },
     "upper-b": {
-        "name": "День 3 — Upper B (Плечи + Руки + Спина)",
-        "exercises": [
-            "Жим гантелей сидя",
-            "Махи гантелей в стороны",
-            "Тяга гантели к подбородку",
-            "Тяга горизонтального блока",
-            "Пуловер с гантелью",
-            "Подъём штанги на бицепс",
-            "Молотки с гантелями",
-            "Разгибание с канатной рукояткой",
-            "Французский жим с гантелями",
+        "name": "Upper B",
+        "sub": "Плечи + Руки + Спина",
+        "emoji": "🏋️",
+        "sections": [
+            {"name": "Плечи", "exs": [
+                {"id": "shoulder", "name": "Жим гантелей сидя",         "sets": "4 × 8–10"},
+                {"id": "lateral",  "name": "Махи гантелей в стороны",   "sets": "3 × 12–15"},
+                {"id": "upright",  "name": "Тяга гантели к подбородку", "sets": "3 × 12"},
+            ]},
+            {"name": "Спина (добивка)", "exs": [
+                {"id": "cable",    "name": "Тяга горизонтального блока", "sets": "3 × 12"},
+                {"id": "pullover", "name": "Пуловер с гантелью",         "sets": "3 × 12"},
+            ]},
+            {"name": "Руки", "exs": [
+                {"id": "curl",     "name": "Подъём штанги на бицепс",        "sets": "3 × 10"},
+                {"id": "hammer",   "name": "Молотки с гантелями",             "sets": "3 × 12"},
+                {"id": "pushdown", "name": "Разгибание с канатной рукояткой", "sets": "3 × 12"},
+                {"id": "french",   "name": "Французский жим с гантелями",     "sets": "3 × 10–12"},
+            ]},
         ]
-    }
+    },
 }
 
-SETS_INFO = {
-    "Жим штанги лёжа": "4 × 6–8",
-    "Жим гантелей по наклонной": "3 × 8–10",
-    "Разводка гантелей лёжа": "3 × 12",
-    "Тяга верхнего блока": "4 × 8–10",
-    "Тяга Т-грифа / гантели одной рукой": "4 × 6–8",
-    "Разведение бабочки": "3 × 15",
-    "Болгарские сплит-приседания": "3 × 8–10 на каждую",
-    "Жим ногами": "3 × 10–12",
-    "Разгибание ног в тренажёре": "3 × 12–15",
-    "Румынская тяга с гантелями": "4 × 8–10",
-    "Сгибание ног лёжа": "3 × 12",
-    "Подъём на носки сидя": "4 × 15–20",
-    "Скручивания на скамье": "3 × 15–20",
-    "Подъём ног в висе": "3 × 12–15",
-    "Жим гантелей сидя": "4 × 8–10",
-    "Махи гантелей в стороны": "3 × 12–15",
-    "Тяга гантели к подбородку": "3 × 12",
-    "Тяга горизонтального блока": "3 × 12",
-    "Пуловер с гантелью": "3 × 12",
-    "Подъём штанги на бицепс": "3 × 10",
-    "Молотки с гантелями": "3 × 12",
-    "Разгибание с канатной рукояткой": "3 × 12",
-    "Французский жим с гантелями": "3 × 10–12",
-}
+# ─── data helpers ─────────────────────────────────────────────────────────────
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -88,256 +85,395 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def get_user(data, user_id):
-    uid = str(user_id)
+def get_user(data, uid):
+    uid = str(uid)
     if uid not in data:
         data[uid] = {"session": None, "weights": {}, "history": []}
     return data[uid]
 
-def today_day_name():
-    dow = datetime.now().weekday()
-    names = {0: "Понедельник", 2: "Среда", 4: "Пятница"}
-    return names.get(dow)
+def all_exs(day_key):
+    exs = []
+    for sec in EXERCISES[day_key]["sections"]:
+        exs.extend(sec["exs"])
+    return exs
 
-def today_day_key():
-    dow = datetime.now().weekday()
-    keys = {0: "upper-a", 2: "lower", 4: "upper-b"}
-    return keys.get(dow)
+def today_key():
+    return {0: "upper-a", 2: "lower", 4: "upper-b"}.get(datetime.now().weekday())
 
-def get_last_weight(user, exercise_name):
+def today_name():
+    return {0: "Понедельник", 2: "Среда", 4: "Пятница"}.get(datetime.now().weekday())
+
+def last_weight(user, ex_id):
     for entry in reversed(user["history"]):
-        if exercise_name in entry.get("weights", {}):
-            return entry["weights"][exercise_name], entry["date"]
+        if ex_id in entry.get("weights", {}):
+            return entry["weights"][ex_id], entry["date"]
     return None, None
 
-def make_keyboard(items, cols=2):
+def week_count(user):
+    now = datetime.now()
+    monday = now.replace(
+        day=now.day - now.weekday(),
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    count = 0
+    for h in user["history"]:
+        try:
+            d = datetime.strptime(h["date"], "%d.%m.%Y")
+            if d >= monday:
+                count += 1
+        except Exception:
+            pass
+    return count
+
+# ─── keyboards ────────────────────────────────────────────────────────────────
+
+def tabs_row(active):
+    icons = {"today": "🏠", "plan": "📋", "progress": "📊", "history": "📅"}
+    labels = {"today": "Сегодня", "plan": "План", "progress": "Прогресс", "history": "История"}
+    row = []
+    for key in ["today", "plan", "progress", "history"]:
+        label = f"[{icons[key]} {labels[key]}]" if key == active else f"{icons[key]} {labels[key]}"
+        row.append(InlineKeyboardButton(label, callback_data=f"tab_{key}"))
+    return [row]
+
+def kb_today(day_key=None):
     rows = []
-    for i in range(0, len(items), cols):
-        rows.append([KeyboardButton(x) for x in items[i:i+cols]])
-    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+    if day_key:
+        day = EXERCISES[day_key]
+        rows.append([InlineKeyboardButton(
+            f"{day['emoji']} Начать — {day['sub']}", callback_data=f"start_{day_key}"
+        )])
+        rows.append([InlineKeyboardButton("📅 Другой день", callback_data="choose_day")])
+    else:
+        rows.append([InlineKeyboardButton("📅 Выбрать день тренировки", callback_data="choose_day")])
+    rows += tabs_row("today")
+    return InlineKeyboardMarkup(rows)
+
+def kb_choose_day():
+    rows = []
+    for key, day in EXERCISES.items():
+        rows.append([InlineKeyboardButton(
+            f"{day['emoji']}  {day['name']} — {day['sub']}", callback_data=f"start_{key}"
+        )])
+    rows.append([InlineKeyboardButton("← Назад", callback_data="tab_today")])
+    rows += tabs_row("today")
+    return InlineKeyboardMarkup(rows)
+
+def kb_plan(day_key):
+    nav = []
+    keys = list(EXERCISES.keys())
+    idx = keys.index(day_key)
+    if idx > 0:
+        prev = keys[idx - 1]
+        nav.append(InlineKeyboardButton(f"◀ {EXERCISES[prev]['name']}", callback_data=f"plan_{prev}"))
+    if idx < len(keys) - 1:
+        nxt = keys[idx + 1]
+        nav.append(InlineKeyboardButton(f"{EXERCISES[nxt]['name']} ▶", callback_data=f"plan_{nxt}"))
+    rows = []
+    if nav:
+        rows.append(nav)
+    rows += tabs_row("plan")
+    return InlineKeyboardMarkup(rows)
+
+def kb_weight(ex_id, w, ex_idx=0):
+    w = w or 0
+    def fmt(v): return f"{v:g}"
+    rows = [
+        [
+            InlineKeyboardButton("−5",    callback_data=f"w_{ex_id}_-5"),
+            InlineKeyboardButton("−2.5",  callback_data=f"w_{ex_id}_-2.5"),
+            InlineKeyboardButton("−1.25", callback_data=f"w_{ex_id}_-1.25"),
+        ],
+        [
+            InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop"),
+        ],
+        [
+            InlineKeyboardButton("+1.25", callback_data=f"w_{ex_id}_+1.25"),
+            InlineKeyboardButton("+2.5",  callback_data=f"w_{ex_id}_+2.5"),
+            InlineKeyboardButton("+5",    callback_data=f"w_{ex_id}_+5"),
+        ],
+        [InlineKeyboardButton("✅  Записать и следующее", callback_data=f"save_{ex_id}")],
+        [InlineKeyboardButton("⏭  Пропустить",           callback_data=f"skip_{ex_id}")],
+    ]
+    nav = []
+    if ex_idx > 0:
+        nav.append(InlineKeyboardButton("← Пред. упражнение", callback_data="prev_ex"))
+    nav.append(InlineKeyboardButton("🚫 Завершить тренировку", callback_data="cancel_training"))
+    rows.append(nav)
+    return InlineKeyboardMarkup(rows)
+
+def kb_finish():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏁  Завершить тренировку", callback_data="finish")],
+        [InlineKeyboardButton("← Вернуться к упражнениям", callback_data="prev_ex")],
+    ])
+
+# ─── text builders ────────────────────────────────────────────────────────────
+
+def text_today(user):
+    dk = today_key()
+    dn = today_name()
+    wk = week_count(user)
+    total = len(user["history"])
+
+    if dk:
+        day = EXERCISES[dk]
+        header = f"📅 Сегодня *{dn}*\n\n{day['emoji']} *{day['name']} — {day['sub']}*\n\nПо расписанию. Готов начать?"
+    else:
+        header = "😴 Сегодня *день отдыха*\n\nТренировочные дни: пн, ср, пт\nМожешь выбрать день вручную:"
+
+    footer = f"\n\n━━━━━━━━━━━━━━\n📊 На этой неделе: *{wk}/3*  |  Всего тренировок: *{total}*"
+    return header + footer
+
+def text_plan(day_key):
+    day = EXERCISES[day_key]
+    lines = [f"{day['emoji']} *{day['name']} — {day['sub']}*\n"]
+    for sec in day["sections"]:
+        lines.append(f"_{sec['name']}_")
+        for ex in sec["exs"]:
+            lines.append(f"  • {ex['name']} — _{ex['sets']}_")
+        lines.append("")
+    lines.append("Листай между днями ◀ ▶")
+    return "\n".join(lines)
+
+def text_progress(user):
+    if not user["weights"]:
+        return "📊 *Прогресс*\n\nПока нет данных.\nПроведи первую тренировку!"
+    lines = ["📊 *Текущие веса*\n"]
+    for day_key, day in EXERCISES.items():
+        day_lines = []
+        for sec in day["sections"]:
+            for ex in sec["exs"]:
+                w = user["weights"].get(ex["id"])
+                if w:
+                    day_lines.append(f"  • {ex['name']}: *{w:g} кг*")
+        if day_lines:
+            lines.append(f"{day['emoji']} _{day['sub']}_")
+            lines.extend(day_lines)
+            lines.append("")
+    return "\n".join(lines)
+
+def text_history(user):
+    if not user["history"]:
+        return "📅 *История*\n\nПока пусто.\nПроведи первую тренировку!"
+    lines = ["📅 *История тренировок*\n"]
+    for entry in reversed(user["history"][-15:]):
+        day = EXERCISES.get(entry.get("day_key"), {})
+        emoji = day.get("emoji", "🏋️")
+        sub = day.get("sub", "Тренировка")
+        logged = len(entry.get("weights", {}))
+        lines.append(f"{emoji} *{entry['date']}* — {sub}")
+        lines.append(f"   Упражнений записано: {logged}")
+    return "\n".join(lines)
+
+def text_exercise(user, session):
+    exs = all_exs(session["day_key"])
+    idx = session["ex_idx"]
+    ex = exs[idx]
+    total = len(exs)
+    lw, ld = last_weight(user, ex["id"])
+
+    lines = [
+        f"*{ex['name']}*",
+        f"_{ex['sets']}_",
+        "",
+        f"Упражнение {idx + 1} из {total}",
+    ]
+    if lw:
+        lines.append(f"В прошлый раз: *{lw:g} кг* ({ld})")
+    else:
+        lines.append("Первый раз — выбери вес ниже")
+    return "\n".join(lines)
+
+# ─── handlers ─────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     user = get_user(data, update.effective_user.id)
     save_data(data)
-    text = (
-        "Привет! Я твой тренировочный бот 💪\n\n"
-        "Команды:\n"
-        "/train — начать тренировку\n"
-        "/progress — посмотреть веса\n"
-        "/history — история тренировок\n"
-        "/plan — план тренировок\n\n"
-        "Просто начни тренировку и я буду спрашивать вес по каждому упражнению."
-    )
-    await update.message.reply_text(text)
-
-async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    lines = ["📋 *Твой план тренировок*\n"]
-    for key, day in EXERCISES.items():
-        lines.append(f"*{day['name']}*")
-        for ex in day["exercises"]:
-            sets = SETS_INFO.get(ex, "")
-            lines.append(f"  • {ex} — {sets}")
-        lines.append("")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-
-async def cmd_train(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-
-    day_key = today_day_key()
-    day_name = today_day_name()
-
-    if day_key:
-        day = EXERCISES[day_key]
-        keyboard = make_keyboard(
-            [f"Да, {day_name}!", "Выбрать другой день"]
-        )
-        user["session"] = {"step": "confirm_day", "suggested_key": day_key}
-        save_data(data)
-        await update.message.reply_text(
-            f"Сегодня {day_name} — по расписанию:\n*{day['name']}*\n\nНачинаем?",
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
-    else:
-        await show_day_choice(update, user, data)
-
-async def show_day_choice(update, user, data):
-    options = [EXERCISES[k]["name"] for k in EXERCISES]
-    keyboard = make_keyboard(options, cols=1)
-    user["session"] = {"step": "choose_day"}
-    save_data(data)
     await update.message.reply_text(
-        "Выбери день тренировки:", reply_markup=keyboard
+        text_today(user),
+        parse_mode="Markdown",
+        reply_markup=kb_today(today_key())
     )
 
-async def cmd_progress(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    cb = q.data
+
     data = load_data()
     user = get_user(data, update.effective_user.id)
 
-    if not user["weights"]:
-        await update.message.reply_text("Пока нет данных. Проведи первую тренировку!")
+    # tabs
+    if cb == "tab_today":
+        await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
+        return
+    if cb == "tab_plan":
+        dk = today_key() or "upper-a"
+        await q.edit_message_text(text_plan(dk), parse_mode="Markdown", reply_markup=kb_plan(dk))
+        return
+    if cb == "tab_progress":
+        await q.edit_message_text(text_progress(user), parse_mode="Markdown",
+                                   reply_markup=InlineKeyboardMarkup(tabs_row("progress")))
+        return
+    if cb == "tab_history":
+        await q.edit_message_text(text_history(user), parse_mode="Markdown",
+                                   reply_markup=InlineKeyboardMarkup(tabs_row("history")))
         return
 
-    lines = ["📊 *Твои текущие веса*\n"]
-    for day_key, day in EXERCISES.items():
-        day_lines = []
-        for ex in day["exercises"]:
-            w = user["weights"].get(ex)
-            if w:
-                day_lines.append(f"  • {ex}: *{w} кг*")
-        if day_lines:
-            lines.append(f"_{day['name']}_")
-            lines.extend(day_lines)
-            lines.append("")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-
-async def cmd_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-
-    if not user["history"]:
-        await update.message.reply_text("История пуста. Проведи первую тренировку!")
+    # plan nav
+    if cb.startswith("plan_"):
+        dk = cb[5:]
+        await q.edit_message_text(text_plan(dk), parse_mode="Markdown", reply_markup=kb_plan(dk))
         return
 
-    lines = ["📅 *История тренировок*\n"]
-    for entry in reversed(user["history"][-10:]):
-        day = EXERCISES.get(entry["day_key"], {})
-        lines.append(f"*{entry['date']}* — {day.get('name', entry['day_key'])}")
+    # day choice
+    if cb == "choose_day":
+        await q.edit_message_text("Выбери день тренировки:", reply_markup=kb_choose_day())
+        return
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    # start training
+    if cb.startswith("start_"):
+        day_key = cb[6:]
+        day = EXERCISES[day_key]
+        user["session"] = {"day_key": day_key, "ex_idx": 0, "weights": {}}
+        save_data(data)
+        ex = all_exs(day_key)[0]
+        cur_w = user["weights"].get(ex["id"], 0)
+        txt = f"{day['emoji']} *{day['name']} — {day['sub']}*\n\n" + text_exercise(user, user["session"])
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=0))
+        return
 
-async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-    text = update.message.text.strip()
-    session = user.get("session")
+    # weight adjust
+    if cb.startswith("w_"):
+        parts = cb.split("_")
+        ex_id = parts[1]
+        delta = float(parts[2])
+        cur = user["weights"].get(ex_id, 0) or 0
+        new_w = max(0, round(cur + delta, 2))
+        user["weights"][ex_id] = new_w
+        save_data(data)
+        session = user.get("session")
+        if session:
+            txt = text_exercise(user, session)
+            await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex_id, new_w, ex_idx=session["ex_idx"]))
+        return
 
-    if not session:
-        await update.message.reply_text(
-            "Напиши /train чтобы начать тренировку, или /help для списка команд."
+    if cb == "noop":
+        return
+
+    # save and next
+    if cb.startswith("save_"):
+        ex_id = cb[5:]
+        session = user.get("session")
+        if not session:
+            return
+        w = user["weights"].get(ex_id, 0)
+        session["weights"][ex_id] = w
+        save_data(data)
+        await advance(q, user, data, session)
+        return
+
+    # skip
+    if cb.startswith("skip_"):
+        session = user.get("session")
+        if not session:
+            return
+        await advance(q, user, data, session)
+        return
+
+    # prev exercise
+    if cb == "prev_ex":
+        session = user.get("session")
+        if not session:
+            await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
+            return
+        prev_idx = max(0, session["ex_idx"] - 1)
+        session["ex_idx"] = prev_idx
+        save_data(data)
+        exs = all_exs(session["day_key"])
+        ex = exs[prev_idx]
+        txt = text_exercise(user, session)
+        cur_w = user["weights"].get(ex["id"], 0)
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=prev_idx))
+        return
+
+    # cancel training
+    if cb == "cancel_training":
+        user["session"] = None
+        save_data(data)
+        await q.edit_message_text(
+            "❌ Тренировка отменена.\n\nВеса которые ты уже ввёл — сохранены.",
+            parse_mode="Markdown",
+            reply_markup=kb_today(today_key())
         )
         return
 
-    step = session.get("step")
-
-    if step == "confirm_day":
-        if text.startswith("Да"):
-            await start_training(update, user, data, session["suggested_key"])
-        else:
-            await show_day_choice(update, user, data)
-        return
-
-    if step == "choose_day":
-        chosen_key = None
-        for k, v in EXERCISES.items():
-            if v["name"] == text:
-                chosen_key = k
-                break
-        if not chosen_key:
-            await update.message.reply_text("Выбери день из списка 👇")
+    # finish
+    if cb == "finish":
+        session = user.get("session")
+        if not session:
             return
-        await start_training(update, user, data, chosen_key)
+        date_str = datetime.now().strftime("%d.%m.%Y")
+        user["history"].append({
+            "date": date_str,
+            "day_key": session["day_key"],
+            "weights": session.get("weights", {})
+        })
+        user["session"] = None
+        save_data(data)
+        day = EXERCISES[session["day_key"]]
+        logged = len(session.get("weights", {}))
+        await q.edit_message_text(
+            f"🏆 *Тренировка завершена!*\n\n{day['emoji']} {day['sub']}\nЗаписано упражнений: *{logged}*\n\nОтличная работа! 💪",
+            parse_mode="Markdown",
+            reply_markup=kb_today(today_key())
+        )
         return
 
-    if step == "log_weight":
-        ex_name = session["current_exercise"]
-        ex_index = session["exercise_index"]
-        exercises = EXERCISES[session["day_key"]]["exercises"]
+async def advance(q, user, data, session):
+    exs = all_exs(session["day_key"])
+    next_idx = session["ex_idx"] + 1
+    if next_idx >= len(exs):
+        save_data(data)
+        await q.edit_message_text("✅ *Все упражнения пройдены!*\n\nЗавершить тренировку?",
+                                   parse_mode="Markdown", reply_markup=kb_finish())
+        return
+    session["ex_idx"] = next_idx
+    save_data(data)
+    ex = exs[next_idx]
+    txt = text_exercise(user, session)
+    cur_w = user["weights"].get(ex["id"], 0)
+    await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=next_idx))
 
-        weight_match = re.search(r"(\d+(?:[.,]\d+)?)", text)
-        if not weight_match and text.lower() not in ["пропустить", "—", "-"]:
+async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    data = load_data()
+    user = get_user(data, update.effective_user.id)
+    session = user.get("session")
+    text = update.message.text.strip()
+    if session:
+        try:
+            w = float(text.replace(",", "."))
+            exs = all_exs(session["day_key"])
+            ex = exs[session["ex_idx"]]
+            user["weights"][ex["id"]] = w
+            session["weights"][ex["id"]] = w
+            save_data(data)
             await update.message.reply_text(
-                f"Напиши вес в кг, например: *80* или *12.5*\nИли напиши *пропустить*",
+                f"✅ *{ex['name']}*: {w:g} кг записано\n\nНажми кнопку на предыдущем сообщении 👆",
                 parse_mode="Markdown"
             )
             return
-
-        if weight_match:
-            weight = float(weight_match.group(1).replace(",", "."))
-            user["weights"][ex_name] = weight
-            if "weights" not in session:
-                session["weights"] = {}
-            session["weights"][ex_name] = weight
-
-        next_index = ex_index + 1
-        if next_index >= len(exercises):
-            await finish_training(update, user, data, session)
-        else:
-            session["exercise_index"] = next_index
-            session["current_exercise"] = exercises[next_index]
-            save_data(data)
-            await ask_exercise(update, user, session, exercises[next_index])
-        return
-
-async def start_training(update, user, data, day_key):
-    day = EXERCISES[day_key]
-    exercises = day["exercises"]
-    first_ex = exercises[0]
-
-    user["session"] = {
-        "step": "log_weight",
-        "day_key": day_key,
-        "exercise_index": 0,
-        "current_exercise": first_ex,
-        "weights": {},
-        "start_time": datetime.now().isoformat()
-    }
-    save_data(data)
-
-    await update.message.reply_text(
-        f"Начинаем *{day['name']}* 💪\n\nБуду спрашивать вес по каждому упражнению. Напиши *пропустить* если упражнение без веса.",
-        parse_mode="Markdown"
-    )
-    await ask_exercise(update, user, user["session"], first_ex)
-
-async def ask_exercise(update, user, session, ex_name):
-    sets = SETS_INFO.get(ex_name, "")
-    last_w, last_date = get_last_weight(user, ex_name)
-
-    lines = [f"*{ex_name}*", f"_{sets}_", ""]
-
-    if last_w:
-        day_str = last_date if last_date else "прошлый раз"
-        lines.append(f"В прошлый раз: *{last_w} кг* ({day_str})")
-        lines.append("")
-
-    lines.append("Сколько кг сегодня? (или *пропустить*)")
-
-    await update.message.reply_text(
-        "\n".join(lines),
-        parse_mode="Markdown",
-        reply_markup=make_keyboard(["пропустить"])
-    )
-
-async def finish_training(update, user, data, session):
-    date_str = datetime.now().strftime("%d.%m.%Y")
-    entry = {
-        "date": date_str,
-        "day_key": session["day_key"],
-        "weights": session.get("weights", {})
-    }
-    user["history"].append(entry)
-    user["session"] = None
-    save_data(data)
-
-    day_name = EXERCISES[session["day_key"]]["name"]
-    logged = len(session.get("weights", {}))
-
-    await update.message.reply_text(
-        f"Тренировка завершена! 🏆\n\n*{day_name}*\nЗаписано упражнений: {logged}\n\nОтличная работа! До следующего раза 💪",
-        parse_mode="Markdown"
-    )
+        except Exception:
+            pass
+    await update.message.reply_text("Напиши /start чтобы открыть меню 👇")
 
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("train", cmd_train))
-    app.add_handler(CommandHandler("progress", cmd_progress))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("plan", cmd_plan))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(handle_cb))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     print("Бот запущен!")
     app.run_polling()
 
