@@ -8,7 +8,7 @@ from telegram.ext import (
 )
 
 TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ВАШ_ТОКЕН_СЮДА")
-DATA_FILE = "data.json"
+DATA_FILE = "/data/data.json"
 
 DEFAULT_EXERCISES = {
     "upper-a": {
@@ -82,6 +82,7 @@ def load_data():
     return {}
 
 def save_data(data):
+    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
