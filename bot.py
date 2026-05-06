@@ -139,11 +139,10 @@ def make_ex_id(name):
 # ─── keyboards ────────────────────────────────────────────────────────────────
 
 def tabs_row(active):
-    icons  = {"today": "🏠", "plan": "📋", "progress": "📊", "history": "📅"}
     labels = {"today": "Сегодня", "plan": "План", "progress": "Прогресс", "history": "История"}
     row = []
     for key in ["today", "plan", "progress", "history"]:
-        label = f"[{icons[key]} {labels[key]}]" if key == active else f"{icons[key]} {labels[key]}"
+        label = f"[ {labels[key]} ]" if key == active else labels[key]
         row.append(InlineKeyboardButton(label, callback_data=f"tab_{key}"))
     return [row]
 
@@ -151,18 +150,18 @@ def kb_today(day_key=None):
     rows = []
     if day_key:
         day = DEFAULT_EXERCISES[day_key]
-        rows.append([InlineKeyboardButton(f"{day['emoji']} Начать — {day['sub']}", callback_data=f"start_{day_key}")])
-        rows.append([InlineKeyboardButton("📅 Другой день", callback_data="choose_day")])
+        rows.append([InlineKeyboardButton(f"Начать тренировку — {day['sub']}", callback_data=f"start_{day_key}")])
+        rows.append([InlineKeyboardButton("Выбрать другой день", callback_data="choose_day")])
     else:
-        rows.append([InlineKeyboardButton("📅 Выбрать день тренировки", callback_data="choose_day")])
+        rows.append([InlineKeyboardButton("Выбрать день тренировки", callback_data="choose_day")])
     rows += tabs_row("today")
     return InlineKeyboardMarkup(rows)
 
 def kb_choose_day():
     rows = []
     for key, day in DEFAULT_EXERCISES.items():
-        rows.append([InlineKeyboardButton(f"{day['emoji']}  {day['name']} — {day['sub']}", callback_data=f"start_{key}")])
-    rows.append([InlineKeyboardButton("← Назад", callback_data="tab_today")])
+        rows.append([InlineKeyboardButton(f"{day['name']} — {day['sub']}", callback_data=f"start_{key}")])
+    rows.append([InlineKeyboardButton("Назад", callback_data="tab_today")])
     rows += tabs_row("today")
     return InlineKeyboardMarkup(rows)
 
@@ -172,14 +171,14 @@ def kb_plan(day_key, exercises):
     nav = []
     if idx > 0:
         prev = keys[idx - 1]
-        nav.append(InlineKeyboardButton(f"◀ {exercises[prev]['name']}", callback_data=f"plan_{prev}"))
+        nav.append(InlineKeyboardButton(f"← {exercises[prev]['name']}", callback_data=f"plan_{prev}"))
     if idx < len(keys) - 1:
         nxt = keys[idx + 1]
-        nav.append(InlineKeyboardButton(f"{exercises[nxt]['name']} ▶", callback_data=f"plan_{nxt}"))
+        nav.append(InlineKeyboardButton(f"{exercises[nxt]['name']} →", callback_data=f"plan_{nxt}"))
     rows = []
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton("✏️ Редактировать упражнения", callback_data=f"edit_day_{day_key}")])
+    rows.append([InlineKeyboardButton("Редактировать упражнения", callback_data=f"edit_day_{day_key}")])
     rows += tabs_row("plan")
     return InlineKeyboardMarkup(rows)
 
@@ -188,14 +187,14 @@ def kb_pick_exercise(day_key, exercises, done_ids):
     rows = []
     for ex in exs:
         done = ex["id"] in done_ids
-        label = f"✅ {ex['name']}" if done else f"○ {ex['name']}"
+        label = f"[Сделано] {ex['name']}" if done else ex["name"]
         rows.append([InlineKeyboardButton(label, callback_data=f"pick_{ex['id']}")])
     remaining = [e for e in exs if e["id"] not in done_ids]
     if not remaining:
-        rows.append([InlineKeyboardButton("🏁 Все сделаны — завершить", callback_data="show_summary")])
+        rows.append([InlineKeyboardButton("Все сделаны — перейти к итогу", callback_data="show_summary")])
     else:
-        rows.append([InlineKeyboardButton("📋 Итог и завершить", callback_data="show_summary")])
-    rows.append([InlineKeyboardButton("🚫 Отменить тренировку", callback_data="cancel_training")])
+        rows.append([InlineKeyboardButton("Перейти к итогу и завершить", callback_data="show_summary")])
+    rows.append([InlineKeyboardButton("Отменить тренировку", callback_data="cancel_training")])
     return InlineKeyboardMarkup(rows)
 
 def kb_weight(ex_id, w, ex_idx=0):
@@ -203,27 +202,26 @@ def kb_weight(ex_id, w, ex_idx=0):
     def fmt(v): return f"{v:g}"
     rows = [
         [
-            InlineKeyboardButton("−5",    callback_data=f"w_{ex_id}_-5"),
-            InlineKeyboardButton("−2.5",  callback_data=f"w_{ex_id}_-2.5"),
-            InlineKeyboardButton("−1.25", callback_data=f"w_{ex_id}_-1.25"),
+            InlineKeyboardButton("−5 кг",    callback_data=f"w_{ex_id}_-5"),
+            InlineKeyboardButton("−2.5 кг",  callback_data=f"w_{ex_id}_-2.5"),
+            InlineKeyboardButton("−1.25 кг", callback_data=f"w_{ex_id}_-1.25"),
         ],
-        [InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop")],
+        [InlineKeyboardButton(f"Текущий вес: {fmt(w)} кг" if w else "Текущий вес: без веса", callback_data="noop")],
         [
-            InlineKeyboardButton("+1.25", callback_data=f"w_{ex_id}_+1.25"),
-            InlineKeyboardButton("+2.5",  callback_data=f"w_{ex_id}_+2.5"),
-            InlineKeyboardButton("+5",    callback_data=f"w_{ex_id}_+5"),
+            InlineKeyboardButton("+1.25 кг", callback_data=f"w_{ex_id}_+1.25"),
+            InlineKeyboardButton("+2.5 кг",  callback_data=f"w_{ex_id}_+2.5"),
+            InlineKeyboardButton("+5 кг",    callback_data=f"w_{ex_id}_+5"),
         ],
-        [InlineKeyboardButton("✅  Записать и вернуться к списку", callback_data=f"save_{ex_id}")],
-        [InlineKeyboardButton("⏭  Пропустить",                    callback_data=f"skip_{ex_id}")],
-        [InlineKeyboardButton("← К списку упражнений",            callback_data="pick_list")],
+        [InlineKeyboardButton("Записать и вернуться к списку", callback_data=f"save_{ex_id}")],
+        [InlineKeyboardButton("Пропустить упражнение",         callback_data=f"skip_{ex_id}")],
+        [InlineKeyboardButton("Назад к списку упражнений",     callback_data="pick_list")],
     ]
     return InlineKeyboardMarkup(rows)
 
-
 def kb_finish():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏁  Завершить тренировку", callback_data="finish")],
-        [InlineKeyboardButton("← Вернуться к упражнениям", callback_data="prev_ex")],
+        [InlineKeyboardButton("Завершить тренировку", callback_data="finish")],
+        [InlineKeyboardButton("Назад к упражнениям",  callback_data="prev_ex")],
     ])
 
 def kb_summary(day_key, exercises, session):
@@ -231,28 +229,29 @@ def kb_summary(day_key, exercises, session):
     rows = []
     for ex in exs:
         w = session["weights"].get(ex["id"])
-        label = f"✏️ {ex['name']}" if w else f"➕ {ex['name']} (пропущено)"
+        if w:
+            label = f"Изменить: {ex['name']}"
+        else:
+            label = f"Добавить: {ex['name']} (пропущено)"
         rows.append([InlineKeyboardButton(label, callback_data=f"edit_w_{ex['id']}")])
-    rows.append([InlineKeyboardButton("✅ Записать тренировку", callback_data="finish")])
-    rows.append([InlineKeyboardButton("← Вернуться к упражнениям", callback_data="back_to_train")])
+    rows.append([InlineKeyboardButton("Записать тренировку", callback_data="finish")])
+    rows.append([InlineKeyboardButton("Назад к упражнениям", callback_data="back_to_train")])
     return InlineKeyboardMarkup(rows)
 
 def kb_edit_day(day_key, exercises):
     exs = all_exs(exercises, day_key)
     rows = []
     for ex in exs:
-        rows.append([
-            InlineKeyboardButton(f"❌ {ex['name']}", callback_data=f"del_ex_{day_key}_{ex['id']}"),
-        ])
-    rows.append([InlineKeyboardButton(f"➕ Добавить упражнение в {exercises[day_key]['name']}", callback_data=f"add_ex_{day_key}")])
-    rows.append([InlineKeyboardButton("← Назад к плану", callback_data=f"plan_{day_key}")])
+        rows.append([InlineKeyboardButton(f"Удалить: {ex['name']}", callback_data=f"del_ex_{day_key}_{ex['id']}")])
+    rows.append([InlineKeyboardButton(f"Добавить упражнение в {exercises[day_key]['name']}", callback_data=f"add_ex_{day_key}")])
+    rows.append([InlineKeyboardButton("Назад к плану", callback_data=f"plan_{day_key}")])
     return InlineKeyboardMarkup(rows)
 
 def kb_add_ex_day():
     rows = []
     for key, day in DEFAULT_EXERCISES.items():
-        rows.append([InlineKeyboardButton(f"{day['emoji']} {day['name']} — {day['sub']}", callback_data=f"add_ex_{key}")])
-    rows.append([InlineKeyboardButton("← Назад", callback_data="tab_plan")])
+        rows.append([InlineKeyboardButton(f"{day['name']} — {day['sub']}", callback_data=f"add_ex_{key}")])
+    rows.append([InlineKeyboardButton("Назад", callback_data="tab_plan")])
     return InlineKeyboardMarkup(rows)
 
 # ─── text builders ────────────────────────────────────────────────────────────
@@ -285,7 +284,7 @@ def text_progress(user):
     exercises = get_exercises(user)
     if not user["weights"]:
         return "📊 *Прогресс*\n\nПока нет данных.\nПроведи первую тренировку!"
-    lines = ["📊 *Текущие веса*\n"]
+    lines = ["📊 *Текущие веса*\n", "_Нажми ❌ рядом с упражнением чтобы сбросить вес_\n"]
     for day_key, day in exercises.items():
         day_lines = []
         for sec in day["sections"]:
@@ -299,19 +298,50 @@ def text_progress(user):
             lines.append("")
     return "\n".join(lines)
 
+def kb_progress(user):
+    exercises = get_exercises(user)
+    rows = []
+    for day_key, day in exercises.items():
+        for sec in day["sections"]:
+            for ex in sec["exs"]:
+                w = user["weights"].get(ex["id"])
+                if w:
+                    rows.append([InlineKeyboardButton(
+                        f"Сбросить вес: {ex['name']} — {w:g} кг",
+                        callback_data=f"del_weight_{ex['id']}"
+                    )])
+    rows += tabs_row("progress")
+    return InlineKeyboardMarkup(rows)
+
 def text_history(user):
     exercises = get_exercises(user)
     if not user["history"]:
-        return "📅 *История*\n\nПока пусто.\nПроведи первую тренировку!"
-    lines = ["📅 *История тренировок*\n"]
-    for entry in reversed(user["history"][-15:]):
+        return "📅 *История тренировок*\n\nПока пусто.\nПроведи первую тренировку!"
+    lines = ["📅 *История тренировок*\n", "_Нажми ❌ чтобы удалить запись_\n"]
+    history = user["history"][-15:]
+    for i, entry in enumerate(reversed(history)):
+        real_idx = len(history) - 1 - i
         day = exercises.get(entry.get("day_key"), {})
         emoji = day.get("emoji", "🏋️")
         sub = day.get("sub", "Тренировка")
         logged = len(entry.get("weights", {}))
-        lines.append(f"{emoji} *{entry['date']}* — {sub}")
-        lines.append(f"   Упражнений: {logged}")
+        lines.append(f"{emoji} *{entry['date']}* — {sub}  |  упражнений: {logged}")
     return "\n".join(lines)
+
+def kb_history(user):
+    exercises = get_exercises(user)
+    history = user["history"][-15:]
+    rows = []
+    for i, entry in enumerate(reversed(history)):
+        real_idx = len(user["history"]) - 1 - i
+        day = exercises.get(entry.get("day_key"), {})
+        sub = day.get("sub", "Тренировка")
+        rows.append([InlineKeyboardButton(
+            f"Удалить: {entry['date']} — {sub}",
+            callback_data=f"del_hist_{real_idx}"
+        )])
+    rows += tabs_row("history")
+    return InlineKeyboardMarkup(rows)
 
 def text_exercise(user, session, exercises):
     exs = all_exs(exercises, session["day_key"])
@@ -403,7 +433,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             welcome,
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Начать работу", callback_data="go_home")]
+                [InlineKeyboardButton("Начать работу", callback_data="go_home")]
             ])
         )
     else:
@@ -437,13 +467,59 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     if cb == "tab_progress":
-        await q.edit_message_text(text_progress(user), parse_mode="Markdown",
-                                   reply_markup=InlineKeyboardMarkup(tabs_row("progress")))
+        if user["weights"]:
+            await q.edit_message_text(text_progress(user), parse_mode="Markdown",
+                                       reply_markup=kb_progress(user))
+        else:
+            await q.edit_message_text(text_progress(user), parse_mode="Markdown",
+                                       reply_markup=InlineKeyboardMarkup(tabs_row("progress")))
+        return
+
+    # ── delete weight for exercise ────────────────────────────────────────────
+    if cb.startswith("del_weight_"):
+        ex_id = cb[11:]
+        exercises = get_exercises(user)
+        ex_name = next(
+            (e["name"] for dk in exercises for sec in exercises[dk]["sections"] for e in sec["exs"] if e["id"] == ex_id),
+            ex_id
+        )
+        user["weights"].pop(ex_id, None)
+        save_data(data)
+        await q.answer(f"Сброшено: {ex_name}", show_alert=False)
+        if user["weights"]:
+            await q.edit_message_text(text_progress(user), parse_mode="Markdown",
+                                       reply_markup=kb_progress(user))
+        else:
+            await q.edit_message_text(
+                "📊 *Прогресс*\n\nПока нет данных.\nПроведи первую тренировку!",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(tabs_row("progress"))
+            )
         return
 
     if cb == "tab_history":
         await q.edit_message_text(text_history(user), parse_mode="Markdown",
-                                   reply_markup=InlineKeyboardMarkup(tabs_row("history")))
+                                   reply_markup=kb_history(user))
+        return
+
+    # ── delete history entry ──────────────────────────────────────────────────
+    if cb.startswith("del_hist_"):
+        idx = int(cb[9:])
+        if 0 <= idx < len(user["history"]):
+            deleted = user["history"].pop(idx)
+            save_data(data)
+            day = get_exercises(user).get(deleted.get("day_key"), {})
+            sub = day.get("sub", "тренировка")
+            await q.answer(f"Удалено: {deleted['date']} — {sub}", show_alert=False)
+        if user["history"]:
+            await q.edit_message_text(text_history(user), parse_mode="Markdown",
+                                       reply_markup=kb_history(user))
+        else:
+            await q.edit_message_text(
+                "📅 *История тренировок*\n\nПока пусто.\nПроведи первую тренировку!",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(tabs_row("history"))
+            )
         return
 
     # ── plan nav ──────────────────────────────────────────────────────────────
@@ -734,18 +810,18 @@ def kb_weight_edit(ex_id, w):
     def fmt(v): return f"{v:g}"
     rows = [
         [
-            InlineKeyboardButton("−5",    callback_data=f"we_{ex_id}_-5"),
-            InlineKeyboardButton("−2.5",  callback_data=f"we_{ex_id}_-2.5"),
-            InlineKeyboardButton("−1.25", callback_data=f"we_{ex_id}_-1.25"),
+            InlineKeyboardButton("−5 кг",    callback_data=f"we_{ex_id}_-5"),
+            InlineKeyboardButton("−2.5 кг",  callback_data=f"we_{ex_id}_-2.5"),
+            InlineKeyboardButton("−1.25 кг", callback_data=f"we_{ex_id}_-1.25"),
         ],
-        [InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop")],
+        [InlineKeyboardButton(f"Текущий вес: {fmt(w)} кг" if w else "Текущий вес: без веса", callback_data="noop")],
         [
-            InlineKeyboardButton("+1.25", callback_data=f"we_{ex_id}_+1.25"),
-            InlineKeyboardButton("+2.5",  callback_data=f"we_{ex_id}_+2.5"),
-            InlineKeyboardButton("+5",    callback_data=f"we_{ex_id}_+5"),
+            InlineKeyboardButton("+1.25 кг", callback_data=f"we_{ex_id}_+1.25"),
+            InlineKeyboardButton("+2.5 кг",  callback_data=f"we_{ex_id}_+2.5"),
+            InlineKeyboardButton("+5 кг",    callback_data=f"we_{ex_id}_+5"),
         ],
-        [InlineKeyboardButton("✅ Сохранить и вернуться к итогу", callback_data=f"save_edit_{ex_id}")],
-        [InlineKeyboardButton("← К итогу без изменений",         callback_data="show_summary")],
+        [InlineKeyboardButton("Сохранить и вернуться к итогу", callback_data=f"save_edit_{ex_id}")],
+        [InlineKeyboardButton("Назад к итогу без изменений",   callback_data="show_summary")],
     ]
     return InlineKeyboardMarkup(rows)
 
