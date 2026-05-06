@@ -10,21 +10,21 @@ from telegram.ext import (
 TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ВАШ_ТОКЕН_СЮДА")
 DATA_FILE = "data.json"
 
-EXERCISES = {
+DEFAULT_EXERCISES = {
     "upper-a": {
         "name": "Upper A",
         "sub": "Грудь + Спина",
         "emoji": "💪",
         "sections": [
             {"name": "Грудь", "exs": [
-                {"id": "bench",   "name": "Жим штанги лёжа",                 "sets": "4 × 6–8"},
-                {"id": "incline", "name": "Жим гантелей по наклонной",       "sets": "3 × 8–10"},
-                {"id": "fly",     "name": "Разводка гантелей лёжа",          "sets": "3 × 12"},
+                {"id": "bench",   "name": "Жим штанги лёжа",                  "sets": "4 × 6–8"},
+                {"id": "incline", "name": "Жим гантелей по наклонной",        "sets": "3 × 8–10"},
+                {"id": "fly",     "name": "Разводка гантелей лёжа",           "sets": "3 × 12"},
             ]},
             {"name": "Спина", "exs": [
-                {"id": "lat",  "name": "Тяга верхнего блока",                "sets": "4 × 8–10"},
-                {"id": "tbar", "name": "Тяга Т-грифа / гантели одной рукой", "sets": "4 × 6–8"},
-                {"id": "rear", "name": "Разведение бабочки",                 "sets": "3 × 15"},
+                {"id": "lat",  "name": "Тяга верхнего блока",                 "sets": "4 × 8–10"},
+                {"id": "tbar", "name": "Тяга Т-грифа / гантели одной рукой",  "sets": "4 × 6–8"},
+                {"id": "rear", "name": "Разведение бабочки",                  "sets": "3 × 15"},
             ]},
         ]
     },
@@ -73,7 +73,7 @@ EXERCISES = {
     },
 }
 
-# ─── data helpers ─────────────────────────────────────────────────────────────
+# ─── data ─────────────────────────────────────────────────────────────────────
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -88,12 +88,20 @@ def save_data(data):
 def get_user(data, uid):
     uid = str(uid)
     if uid not in data:
-        data[uid] = {"session": None, "weights": {}, "history": []}
+        data[uid] = {"session": None, "weights": {}, "history": [], "exercises": None}
+    if "exercises" not in data[uid]:
+        data[uid]["exercises"] = None
     return data[uid]
 
-def all_exs(day_key):
+def get_exercises(user):
+    if user.get("exercises"):
+        return user["exercises"]
+    import copy
+    return copy.deepcopy(DEFAULT_EXERCISES)
+
+def all_exs(exercises, day_key):
     exs = []
-    for sec in EXERCISES[day_key]["sections"]:
+    for sec in exercises[day_key]["sections"]:
         exs.extend(sec["exs"])
     return exs
 
@@ -111,10 +119,7 @@ def last_weight(user, ex_id):
 
 def week_count(user):
     now = datetime.now()
-    monday = now.replace(
-        day=now.day - now.weekday(),
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    monday = now.replace(day=now.day - now.weekday(), hour=0, minute=0, second=0, microsecond=0)
     count = 0
     for h in user["history"]:
         try:
@@ -125,10 +130,14 @@ def week_count(user):
             pass
     return count
 
+def make_ex_id(name):
+    import hashlib
+    return "custom_" + hashlib.md5(name.encode()).hexdigest()[:8]
+
 # ─── keyboards ────────────────────────────────────────────────────────────────
 
 def tabs_row(active):
-    icons = {"today": "🏠", "plan": "📋", "progress": "📊", "history": "📅"}
+    icons  = {"today": "🏠", "plan": "📋", "progress": "📊", "history": "📅"}
     labels = {"today": "Сегодня", "plan": "План", "progress": "Прогресс", "history": "История"}
     row = []
     for key in ["today", "plan", "progress", "history"]:
@@ -139,10 +148,8 @@ def tabs_row(active):
 def kb_today(day_key=None):
     rows = []
     if day_key:
-        day = EXERCISES[day_key]
-        rows.append([InlineKeyboardButton(
-            f"{day['emoji']} Начать — {day['sub']}", callback_data=f"start_{day_key}"
-        )])
+        day = DEFAULT_EXERCISES[day_key]
+        rows.append([InlineKeyboardButton(f"{day['emoji']} Начать — {day['sub']}", callback_data=f"start_{day_key}")])
         rows.append([InlineKeyboardButton("📅 Другой день", callback_data="choose_day")])
     else:
         rows.append([InlineKeyboardButton("📅 Выбрать день тренировки", callback_data="choose_day")])
@@ -151,27 +158,26 @@ def kb_today(day_key=None):
 
 def kb_choose_day():
     rows = []
-    for key, day in EXERCISES.items():
-        rows.append([InlineKeyboardButton(
-            f"{day['emoji']}  {day['name']} — {day['sub']}", callback_data=f"start_{key}"
-        )])
+    for key, day in DEFAULT_EXERCISES.items():
+        rows.append([InlineKeyboardButton(f"{day['emoji']}  {day['name']} — {day['sub']}", callback_data=f"start_{key}")])
     rows.append([InlineKeyboardButton("← Назад", callback_data="tab_today")])
     rows += tabs_row("today")
     return InlineKeyboardMarkup(rows)
 
-def kb_plan(day_key):
-    nav = []
-    keys = list(EXERCISES.keys())
+def kb_plan(day_key, exercises):
+    keys = list(exercises.keys())
     idx = keys.index(day_key)
+    nav = []
     if idx > 0:
         prev = keys[idx - 1]
-        nav.append(InlineKeyboardButton(f"◀ {EXERCISES[prev]['name']}", callback_data=f"plan_{prev}"))
+        nav.append(InlineKeyboardButton(f"◀ {exercises[prev]['name']}", callback_data=f"plan_{prev}"))
     if idx < len(keys) - 1:
         nxt = keys[idx + 1]
-        nav.append(InlineKeyboardButton(f"{EXERCISES[nxt]['name']} ▶", callback_data=f"plan_{nxt}"))
+        nav.append(InlineKeyboardButton(f"{exercises[nxt]['name']} ▶", callback_data=f"plan_{nxt}"))
     rows = []
     if nav:
         rows.append(nav)
+    rows.append([InlineKeyboardButton("✏️ Редактировать упражнения", callback_data=f"edit_day_{day_key}")])
     rows += tabs_row("plan")
     return InlineKeyboardMarkup(rows)
 
@@ -184,9 +190,7 @@ def kb_weight(ex_id, w, ex_idx=0):
             InlineKeyboardButton("−2.5",  callback_data=f"w_{ex_id}_-2.5"),
             InlineKeyboardButton("−1.25", callback_data=f"w_{ex_id}_-1.25"),
         ],
-        [
-            InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop"),
-        ],
+        [InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop")],
         [
             InlineKeyboardButton("+1.25", callback_data=f"w_{ex_id}_+1.25"),
             InlineKeyboardButton("+2.5",  callback_data=f"w_{ex_id}_+2.5"),
@@ -197,8 +201,8 @@ def kb_weight(ex_id, w, ex_idx=0):
     ]
     nav = []
     if ex_idx > 0:
-        nav.append(InlineKeyboardButton("← Пред. упражнение", callback_data="prev_ex"))
-    nav.append(InlineKeyboardButton("🚫 Завершить тренировку", callback_data="cancel_training"))
+        nav.append(InlineKeyboardButton("← Пред.", callback_data="prev_ex"))
+    nav.append(InlineKeyboardButton("🚫 Отменить", callback_data="cancel_training"))
     rows.append(nav)
     return InlineKeyboardMarkup(rows)
 
@@ -208,6 +212,33 @@ def kb_finish():
         [InlineKeyboardButton("← Вернуться к упражнениям", callback_data="prev_ex")],
     ])
 
+def kb_summary(day_key, exercises):
+    exs = all_exs(exercises, day_key)
+    rows = []
+    for ex in exs:
+        rows.append([InlineKeyboardButton(f"✏️ {ex['name']}", callback_data=f"edit_w_{ex['id']}")])
+    rows.append([InlineKeyboardButton("🏁 Сохранить и завершить", callback_data="finish")])
+    rows.append([InlineKeyboardButton("← Назад к тренировке",    callback_data="back_to_train")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_edit_day(day_key, exercises):
+    exs = all_exs(exercises, day_key)
+    rows = []
+    for ex in exs:
+        rows.append([
+            InlineKeyboardButton(f"❌ {ex['name']}", callback_data=f"del_ex_{day_key}_{ex['id']}"),
+        ])
+    rows.append([InlineKeyboardButton(f"➕ Добавить упражнение в {exercises[day_key]['name']}", callback_data=f"add_ex_{day_key}")])
+    rows.append([InlineKeyboardButton("← Назад к плану", callback_data=f"plan_{day_key}")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_add_ex_day():
+    rows = []
+    for key, day in DEFAULT_EXERCISES.items():
+        rows.append([InlineKeyboardButton(f"{day['emoji']} {day['name']} — {day['sub']}", callback_data=f"add_ex_{key}")])
+    rows.append([InlineKeyboardButton("← Назад", callback_data="tab_plan")])
+    return InlineKeyboardMarkup(rows)
+
 # ─── text builders ────────────────────────────────────────────────────────────
 
 def text_today(user):
@@ -215,18 +246,16 @@ def text_today(user):
     dn = today_name()
     wk = week_count(user)
     total = len(user["history"])
-
     if dk:
-        day = EXERCISES[dk]
+        day = DEFAULT_EXERCISES[dk]
         header = f"📅 Сегодня *{dn}*\n\n{day['emoji']} *{day['name']} — {day['sub']}*\n\nПо расписанию. Готов начать?"
     else:
         header = "😴 Сегодня *день отдыха*\n\nТренировочные дни: пн, ср, пт\nМожешь выбрать день вручную:"
-
-    footer = f"\n\n━━━━━━━━━━━━━━\n📊 На этой неделе: *{wk}/3*  |  Всего тренировок: *{total}*"
+    footer = f"\n\n━━━━━━━━━━━━━━\n📊 На этой неделе: *{wk}/3*  |  Всего: *{total}*"
     return header + footer
 
-def text_plan(day_key):
-    day = EXERCISES[day_key]
+def text_plan(day_key, exercises):
+    day = exercises[day_key]
     lines = [f"{day['emoji']} *{day['name']} — {day['sub']}*\n"]
     for sec in day["sections"]:
         lines.append(f"_{sec['name']}_")
@@ -237,10 +266,11 @@ def text_plan(day_key):
     return "\n".join(lines)
 
 def text_progress(user):
+    exercises = get_exercises(user)
     if not user["weights"]:
         return "📊 *Прогресс*\n\nПока нет данных.\nПроведи первую тренировку!"
     lines = ["📊 *Текущие веса*\n"]
-    for day_key, day in EXERCISES.items():
+    for day_key, day in exercises.items():
         day_lines = []
         for sec in day["sections"]:
             for ex in sec["exs"]:
@@ -254,25 +284,26 @@ def text_progress(user):
     return "\n".join(lines)
 
 def text_history(user):
+    exercises = get_exercises(user)
     if not user["history"]:
         return "📅 *История*\n\nПока пусто.\nПроведи первую тренировку!"
     lines = ["📅 *История тренировок*\n"]
     for entry in reversed(user["history"][-15:]):
-        day = EXERCISES.get(entry.get("day_key"), {})
+        day = exercises.get(entry.get("day_key"), {})
         emoji = day.get("emoji", "🏋️")
         sub = day.get("sub", "Тренировка")
         logged = len(entry.get("weights", {}))
         lines.append(f"{emoji} *{entry['date']}* — {sub}")
-        lines.append(f"   Упражнений записано: {logged}")
+        lines.append(f"   Упражнений: {logged}")
     return "\n".join(lines)
 
-def text_exercise(user, session):
-    exs = all_exs(session["day_key"])
+def text_exercise(user, session, exercises):
+    exs = all_exs(exercises, session["day_key"])
     idx = session["ex_idx"]
     ex = exs[idx]
     total = len(exs)
     lw, ld = last_weight(user, ex["id"])
-
+    cur_w = user["weights"].get(ex["id"], 0)
     lines = [
         f"*{ex['name']}*",
         f"_{ex['sets']}_",
@@ -283,6 +314,26 @@ def text_exercise(user, session):
         lines.append(f"В прошлый раз: *{lw:g} кг* ({ld})")
     else:
         lines.append("Первый раз — выбери вес ниже")
+    lines.append("")
+    lines.append("_Или просто напиши число в чат_")
+    return "\n".join(lines)
+
+def text_summary(session, user, exercises):
+    day = exercises[session["day_key"]]
+    exs = all_exs(exercises, session["day_key"])
+    lines = [f"📋 *Итог тренировки*\n{day['emoji']} {day['sub']}\n"]
+    for ex in exs:
+        w = session["weights"].get(ex["id"])
+        lw, _ = last_weight(user, ex["id"])
+        if w:
+            diff = ""
+            if lw and lw != w:
+                delta = round(w - lw, 2)
+                diff = f"  {'📈 +' if delta > 0 else '📉 '}{delta:g} кг"
+            lines.append(f"✅ *{ex['name']}*: {w:g} кг{diff}")
+        else:
+            lines.append(f"⏭ _{ex['name']}_: пропущено")
+    lines.append("\nНажми на упражнение чтобы изменить вес, или завершай тренировку.")
     return "\n".join(lines)
 
 # ─── handlers ─────────────────────────────────────────────────────────────────
@@ -290,62 +341,96 @@ def text_exercise(user, session):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     user = get_user(data, update.effective_user.id)
+    is_new = len(user["history"]) == 0 and not user["weights"]
     save_data(data)
-    await update.message.reply_text(
-        text_today(user),
-        parse_mode="Markdown",
-        reply_markup=kb_today(today_key())
-    )
+
+    if is_new:
+        welcome = (
+            "👋 Привет! Я твой личный тренировочный бот.\n\n"
+            "🗓 *Твой план:* Upper A / Lower / Upper B — 3 дня в неделю (пн, ср, пт)\n\n"
+            "💪 *Что я умею:*\n"
+            "• Веду тебя по упражнениям шаг за шагом\n"
+            "• Показываю вес который ты делал в прошлый раз\n"
+            "• Слежу за прогрессом по каждому упражнению\n"
+            "• Показываю итог тренировки в конце\n"
+            "• Позволяю добавлять и удалять упражнения\n"
+            "• Храню всю историю тренировок\n\n"
+            "📲 *Как пользоваться:*\n"
+            "Нажми «Начать» — бот предложит нужный день по расписанию. "
+            "Во время тренировки выбирай вес кнопками или просто пиши число в чат.\n\n"
+            "Готов? 🚀"
+        )
+        await update.message.reply_text(
+            welcome,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Начать работу", callback_data="go_home")]
+            ])
+        )
+    else:
+        await update.message.reply_text(
+            text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
+        )
 
 async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     cb = q.data
-
     data = load_data()
     user = get_user(data, update.effective_user.id)
+    exercises = get_exercises(user)
 
-    # tabs
-    if cb == "tab_today":
+    # ── welcome → home ────────────────────────────────────────────────────────
+    if cb == "go_home":
         await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
         return
+
+    # ── tabs ──────────────────────────────────────────────────────────────────
+    if cb == "tab_today":
+        user["session"] = None
+        save_data(data)
+        await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
+        return
+
     if cb == "tab_plan":
         dk = today_key() or "upper-a"
-        await q.edit_message_text(text_plan(dk), parse_mode="Markdown", reply_markup=kb_plan(dk))
+        await q.edit_message_text(text_plan(dk, exercises), parse_mode="Markdown", reply_markup=kb_plan(dk, exercises))
         return
+
     if cb == "tab_progress":
         await q.edit_message_text(text_progress(user), parse_mode="Markdown",
                                    reply_markup=InlineKeyboardMarkup(tabs_row("progress")))
         return
+
     if cb == "tab_history":
         await q.edit_message_text(text_history(user), parse_mode="Markdown",
                                    reply_markup=InlineKeyboardMarkup(tabs_row("history")))
         return
 
-    # plan nav
+    # ── plan nav ──────────────────────────────────────────────────────────────
     if cb.startswith("plan_"):
         dk = cb[5:]
-        await q.edit_message_text(text_plan(dk), parse_mode="Markdown", reply_markup=kb_plan(dk))
+        await q.edit_message_text(text_plan(dk, exercises), parse_mode="Markdown", reply_markup=kb_plan(dk, exercises))
         return
 
-    # day choice
+    # ── choose day ────────────────────────────────────────────────────────────
     if cb == "choose_day":
         await q.edit_message_text("Выбери день тренировки:", reply_markup=kb_choose_day())
         return
 
-    # start training
+    # ── start training ────────────────────────────────────────────────────────
     if cb.startswith("start_"):
         day_key = cb[6:]
-        day = EXERCISES[day_key]
-        user["session"] = {"day_key": day_key, "ex_idx": 0, "weights": {}}
+        day = exercises[day_key]
+        user["session"] = {"day_key": day_key, "ex_idx": 0, "weights": {}, "msg_mode": "train"}
         save_data(data)
-        ex = all_exs(day_key)[0]
+        ex = all_exs(exercises, day_key)[0]
         cur_w = user["weights"].get(ex["id"], 0)
-        txt = f"{day['emoji']} *{day['name']} — {day['sub']}*\n\n" + text_exercise(user, user["session"])
+        txt = f"{day['emoji']} *{day['name']} — {day['sub']}*\n\n" + text_exercise(user, user["session"], exercises)
         await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=0))
         return
 
-    # weight adjust
+    # ── weight adjust buttons ─────────────────────────────────────────────────
     if cb.startswith("w_"):
         parts = cb.split("_")
         ex_id = parts[1]
@@ -353,17 +438,20 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         cur = user["weights"].get(ex_id, 0) or 0
         new_w = max(0, round(cur + delta, 2))
         user["weights"][ex_id] = new_w
-        save_data(data)
+        # also update session weights if active
         session = user.get("session")
+        if session and session.get("msg_mode") == "train":
+            session["weights"][ex_id] = new_w
+        save_data(data)
         if session:
-            txt = text_exercise(user, session)
+            txt = text_exercise(user, session, exercises)
             await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex_id, new_w, ex_idx=session["ex_idx"]))
         return
 
     if cb == "noop":
         return
 
-    # save and next
+    # ── save and next ─────────────────────────────────────────────────────────
     if cb.startswith("save_"):
         ex_id = cb[5:]
         session = user.get("session")
@@ -372,18 +460,19 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         w = user["weights"].get(ex_id, 0)
         session["weights"][ex_id] = w
         save_data(data)
-        await advance(q, user, data, session)
+        await advance(q, user, data, session, exercises)
         return
 
-    # skip
+    # ── skip ──────────────────────────────────────────────────────────────────
     if cb.startswith("skip_"):
         session = user.get("session")
         if not session:
             return
-        await advance(q, user, data, session)
+        save_data(data)
+        await advance(q, user, data, session, exercises)
         return
 
-    # prev exercise
+    # ── prev exercise ─────────────────────────────────────────────────────────
     if cb == "prev_ex":
         session = user.get("session")
         if not session:
@@ -391,26 +480,84 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return
         prev_idx = max(0, session["ex_idx"] - 1)
         session["ex_idx"] = prev_idx
+        session["msg_mode"] = "train"
         save_data(data)
-        exs = all_exs(session["day_key"])
+        exs = all_exs(exercises, session["day_key"])
         ex = exs[prev_idx]
-        txt = text_exercise(user, session)
+        txt = text_exercise(user, session, exercises)
         cur_w = user["weights"].get(ex["id"], 0)
         await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=prev_idx))
         return
 
-    # cancel training
+    # ── back to train (from summary) ──────────────────────────────────────────
+    if cb == "back_to_train":
+        session = user.get("session")
+        if not session:
+            await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
+            return
+        exs = all_exs(exercises, session["day_key"])
+        last_idx = len(exs) - 1
+        session["ex_idx"] = last_idx
+        session["msg_mode"] = "train"
+        save_data(data)
+        ex = exs[last_idx]
+        txt = text_exercise(user, session, exercises)
+        cur_w = user["weights"].get(ex["id"], 0)
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=last_idx))
+        return
+
+    # ── cancel training ───────────────────────────────────────────────────────
     if cb == "cancel_training":
         user["session"] = None
         save_data(data)
         await q.edit_message_text(
-            "❌ Тренировка отменена.\n\nВеса которые ты уже ввёл — сохранены.",
+            "❌ Тренировка отменена.\n\nВведённые веса сохранены.",
             parse_mode="Markdown",
             reply_markup=kb_today(today_key())
         )
         return
 
-    # finish
+    # ── show summary ──────────────────────────────────────────────────────────
+    if cb == "show_summary":
+        session = user.get("session")
+        if not session:
+            return
+        txt = text_summary(session, user, exercises)
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_summary(session["day_key"], exercises))
+        return
+
+    # ── edit weight from summary ──────────────────────────────────────────────
+    if cb.startswith("edit_w_"):
+        ex_id = cb[7:]
+        session = user.get("session")
+        if not session:
+            return
+        # find ex index
+        exs = all_exs(exercises, session["day_key"])
+        idx = next((i for i, e in enumerate(exs) if e["id"] == ex_id), 0)
+        session["ex_idx"] = idx
+        session["msg_mode"] = "edit"
+        save_data(data)
+        ex = exs[idx]
+        cur_w = user["weights"].get(ex_id, 0)
+        txt = f"✏️ *Редактирование веса*\n\n*{ex['name']}*\n_{ex['sets']}_\n\n_Или напиши число в чат_"
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight_edit(ex_id, cur_w))
+        return
+
+    # ── save edited weight and back to summary ────────────────────────────────
+    if cb.startswith("save_edit_"):
+        ex_id = cb[10:]
+        session = user.get("session")
+        if not session:
+            return
+        w = user["weights"].get(ex_id, 0)
+        session["weights"][ex_id] = w
+        save_data(data)
+        txt = text_summary(session, user, exercises)
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_summary(session["day_key"], exercises))
+        return
+
+    # ── finish ────────────────────────────────────────────────────────────────
     if cb == "finish":
         session = user.get("session")
         if not session:
@@ -423,7 +570,7 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         })
         user["session"] = None
         save_data(data)
-        day = EXERCISES[session["day_key"]]
+        day = exercises[session["day_key"]]
         logged = len(session.get("weights", {}))
         await q.edit_message_text(
             f"🏆 *Тренировка завершена!*\n\n{day['emoji']} {day['sub']}\nЗаписано упражнений: *{logged}*\n\nОтличная работа! 💪",
@@ -432,42 +579,155 @@ async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-async def advance(q, user, data, session):
-    exs = all_exs(session["day_key"])
+    # ── edit exercises in plan ────────────────────────────────────────────────
+    if cb.startswith("edit_day_"):
+        day_key = cb[9:]
+        txt = (
+            f"✏️ *Редактировать — {exercises[day_key]['name']}*\n\n"
+            "Нажми ❌ рядом с упражнением чтобы удалить его.\n"
+            "Или добавь новое снизу."
+        )
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_edit_day(day_key, exercises))
+        return
+
+    # ── delete exercise ───────────────────────────────────────────────────────
+    if cb.startswith("del_ex_"):
+        parts = cb[7:].split("_", 1)
+        day_key = parts[0]
+        ex_id = parts[1]
+        if user["exercises"] is None:
+            import copy
+            user["exercises"] = copy.deepcopy(DEFAULT_EXERCISES)
+        day = user["exercises"][day_key]
+        for sec in day["sections"]:
+            sec["exs"] = [e for e in sec["exs"] if e["id"] != ex_id]
+        save_data(data)
+        exercises = get_exercises(user)
+        txt = (
+            f"✏️ *Редактировать — {exercises[day_key]['name']}*\n\n"
+            "Нажми ❌ рядом с упражнением чтобы удалить его.\n"
+            "Или добавь новое снизу."
+        )
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_edit_day(day_key, exercises))
+        return
+
+    # ── add exercise: choose day ──────────────────────────────────────────────
+    if cb.startswith("add_ex_"):
+        day_key = cb[7:]
+        user["session"] = {"msg_mode": "adding_ex", "target_day": day_key}
+        save_data(data)
+        await q.edit_message_text(
+            f"➕ *Добавить упражнение в {exercises[day_key]['name']}*\n\n"
+            "Напиши название упражнения и количество подходов в чат.\n\n"
+            "Пример:\n`Подтягивания, 4 × 10`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Отмена", callback_data=f"edit_day_{day_key}")]])
+        )
+        return
+
+# ─── weight keyboard for edit mode ───────────────────────────────────────────
+
+def kb_weight_edit(ex_id, w):
+    w = w or 0
+    def fmt(v): return f"{v:g}"
+    rows = [
+        [
+            InlineKeyboardButton("−5",    callback_data=f"w_{ex_id}_-5"),
+            InlineKeyboardButton("−2.5",  callback_data=f"w_{ex_id}_-2.5"),
+            InlineKeyboardButton("−1.25", callback_data=f"w_{ex_id}_-1.25"),
+        ],
+        [InlineKeyboardButton(f"⚖️  {fmt(w)} кг" if w else "⚖️  без веса", callback_data="noop")],
+        [
+            InlineKeyboardButton("+1.25", callback_data=f"w_{ex_id}_+1.25"),
+            InlineKeyboardButton("+2.5",  callback_data=f"w_{ex_id}_+2.5"),
+            InlineKeyboardButton("+5",    callback_data=f"w_{ex_id}_+5"),
+        ],
+        [InlineKeyboardButton("✅ Сохранить и вернуться к итогу", callback_data=f"save_edit_{ex_id}")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+# ─── advance ─────────────────────────────────────────────────────────────────
+
+async def advance(q, user, data, session, exercises):
+    exs = all_exs(exercises, session["day_key"])
     next_idx = session["ex_idx"] + 1
     if next_idx >= len(exs):
+        session["msg_mode"] = "summary"
         save_data(data)
-        await q.edit_message_text("✅ *Все упражнения пройдены!*\n\nЗавершить тренировку?",
-                                   parse_mode="Markdown", reply_markup=kb_finish())
+        txt = text_summary(session, user, exercises)
+        await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_summary(session["day_key"], exercises))
         return
     session["ex_idx"] = next_idx
+    session["msg_mode"] = "train"
     save_data(data)
     ex = exs[next_idx]
-    txt = text_exercise(user, session)
+    txt = text_exercise(user, session, exercises)
     cur_w = user["weights"].get(ex["id"], 0)
     await q.edit_message_text(txt, parse_mode="Markdown", reply_markup=kb_weight(ex["id"], cur_w, ex_idx=next_idx))
+
+# ─── text handler ─────────────────────────────────────────────────────────────
 
 async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     user = get_user(data, update.effective_user.id)
+    exercises = get_exercises(user)
     session = user.get("session")
     text = update.message.text.strip()
-    if session:
+
+    # adding new exercise
+    if session and session.get("msg_mode") == "adding_ex":
+        day_key = session["target_day"]
+        parts = [p.strip() for p in text.split(",", 1)]
+        ex_name = parts[0]
+        ex_sets = parts[1] if len(parts) > 1 else "3 × 10"
+        ex_id = make_ex_id(ex_name)
+
+        if user["exercises"] is None:
+            import copy
+            user["exercises"] = copy.deepcopy(DEFAULT_EXERCISES)
+
+        # add to last section
+        new_ex = {"id": ex_id, "name": ex_name, "sets": ex_sets}
+        user["exercises"][day_key]["sections"][-1]["exs"].append(new_ex)
+        user["session"] = None
+        save_data(data)
+        exercises = get_exercises(user)
+        await update.message.reply_text(
+            f"✅ Упражнение *{ex_name}* добавлено в {exercises[day_key]['name']}!",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"← Назад к плану", callback_data=f"plan_{day_key}")]
+            ])
+        )
+        return
+
+    # manual weight input during training or edit
+    if session and session.get("msg_mode") in ("train", "edit"):
         try:
             w = float(text.replace(",", "."))
-            exs = all_exs(session["day_key"])
+            exs = all_exs(exercises, session["day_key"])
             ex = exs[session["ex_idx"]]
             user["weights"][ex["id"]] = w
             session["weights"][ex["id"]] = w
             save_data(data)
-            await update.message.reply_text(
-                f"✅ *{ex['name']}*: {w:g} кг записано\n\nНажми кнопку на предыдущем сообщении 👆",
-                parse_mode="Markdown"
-            )
+
+            if session.get("msg_mode") == "edit":
+                await update.message.reply_text(
+                    f"✅ *{ex['name']}*: {w:g} кг сохранено\n\nНажми кнопку выше 👆",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ *{ex['name']}*: {w:g} кг записано\n\nНажми *«Записать и следующее»* выше 👆",
+                    parse_mode="Markdown"
+                )
             return
         except Exception:
             pass
+
     await update.message.reply_text("Напиши /start чтобы открыть меню 👇")
+
+# ─── main ─────────────────────────────────────────────────────────────────────
 
 def main():
     app = Application.builder().token(TOKEN).build()
