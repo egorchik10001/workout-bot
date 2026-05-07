@@ -548,6 +548,28 @@ async def generate_and_show_plan(q, user, data):
             text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
         )
 
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    data = load_data()
+    user = get_user(data, update.effective_user.id)
+    is_new = len(user["history"]) == 0 and not user["weights"] and not user.get("onboarded")
+    save_data(data)
+
+    if is_new:
+        user["session"] = {"msg_mode": "onboarding", "profile": {}}
+        save_data(data)
+        await update.message.reply_text(
+            "👋 Привет! Я твой личный тренировочный бот.\n\n"
+            "Прежде чем начать, давай составим план *именно под тебя*. "
+            "Отвечай на вопросы кнопками — займёт меньше минуты.\n\n"
+            "*Какова твоя цель?*",
+            parse_mode="Markdown",
+            reply_markup=kb_onboard_goal()
+        )
+    else:
+        await update.message.reply_text(
+            text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
+        )
+
 async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
