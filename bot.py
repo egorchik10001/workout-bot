@@ -187,7 +187,7 @@ def kb_pick_exercise(day_key, exercises, done_ids):
     rows = []
     for ex in exs:
         done = ex["id"] in done_ids
-        label = f"[Сделано] {ex['name']}" if done else ex["name"]
+        label = f"✅ {ex['name']}" if done else ex["name"]
         rows.append([InlineKeyboardButton(label, callback_data=f"pick_{ex['id']}")])
     remaining = [e for e in exs if e["id"] not in done_ids]
     if not remaining:
