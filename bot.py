@@ -407,6 +407,33 @@ def text_edit_ex_summary(ex, session):
 
 # ─── handlers ─────────────────────────────────────────────────────────────────
 
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    data = load_data()
+    user = get_user(data, update.effective_user.id)
+    is_new = len(user["history"]) == 0 and not user["weights"]
+    save_data(data)
+
+    if is_new:
+        await update.message.reply_text(
+            "Привет! Я твой личный тренировочный бот.\n\n"
+            "Твой план: Upper A / Lower / Upper B — 3 дня в неделю (пн, ср, пт)\n\n"
+            "Что я умею:\n"
+            "• Веду по упражнениям шаг за шагом\n"
+            "• Показываю вес с прошлой тренировки\n"
+            "• Слежу за прогрессом\n"
+            "• Показываю итог в конце\n"
+            "• Позволяю добавлять и удалять упражнения\n"
+            "• Храню всю историю\n\n"
+            "Нажми «Начать работу» — и поехали!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Начать работу", callback_data="go_home")]
+            ])
+        )
+    else:
+        await update.message.reply_text(
+            text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
+        )
+
 async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
