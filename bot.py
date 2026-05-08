@@ -407,6 +407,18 @@ def text_edit_ex_summary(ex, session):
 
 # ─── handlers ─────────────────────────────────────────────────────────────────
 
+async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    cb = q.data
+    data = load_data()
+    user = get_user(data, update.effective_user.id)
+    exercises = get_exercises(user)
+
+    # ── welcome → home ────────────────────────────────────────────────────────
+    if cb == "go_home":
+        await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
+        return
 
     # ── tabs ──────────────────────────────────────────────────────────────────
     if cb == "tab_today":
