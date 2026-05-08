@@ -1,7 +1,6 @@
 import os
 import json
 import re
-import httpx
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -10,7 +9,6 @@ from telegram.ext import (
 )
 
 TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬТЕ_ВАШ_ТОКЕН_СЮДА")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DATA_FILE = "/data/data.json"
 
 DEFAULT_EXERCISES = {
@@ -257,104 +255,6 @@ def kb_add_ex_day():
     return InlineKeyboardMarkup(rows)
 
 
-# ─── groq ─────────────────────────────────────────────────────────────────────
-
-async def ask_groq(prompt: str) -> str:
-    if not GROQ_API_KEY:
-        return "Groq API ключ не настроен."
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "llama3-8b-8192",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1500,
-                "temperature": 0.7,
-            }
-        )
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-
-async def generate_plan_with_groq(profile: dict) -> str:
-    goal_map = {"muscle": "набрать мышечную массу", "lose": "похудеть", "tone": "общий тонус и здоровье"}
-    level_map = {"beginner": "новичок (нет опыта)", "middle": "средний уровень (1-2 года)", "advanced": "продвинутый (3+ лет)"}
-    days_map = {"2": "2 дня", "3": "3 дня", "4": "4 дня"}
-    place_map = {"gym": "тренажёрный зал (полное оборудование)", "home": "дома (гантели/турник)", "any": "зал или дома"}
-
-    goal = goal_map.get(profile.get("goal", ""), profile.get("goal", ""))
-    level = level_map.get(profile.get("level", ""), profile.get("level", ""))
-    days = days_map.get(profile.get("days", ""), profile.get("days", ""))
-    place = place_map.get(profile.get("place", ""), profile.get("place", ""))
-    injuries = profile.get("injuries", "нет")
-
-    prompt = f"""Ты профессиональный тренер. Составь план тренировок на основе данных пользователя.
-
-Данные:
-- Цель: {goal}
-- Уровень: {level}
-- Дней в неделю: {days}
-- Место: {place}
-- Травмы/ограничения: {injuries}
-
-Составь чёткий план тренировок. Для каждого дня укажи название и список упражнений с подходами и повторениями.
-Формат ответа — только план, без лишних слов. Пиши на русском языке.
-Пример формата:
-День 1 — Грудь и Спина:
-• Жим штанги лёжа — 4 × 6-8
-• Тяга верхнего блока — 4 × 8-10
-
-День 2 — Ноги:
-• Приседания — 4 × 8
-...
-
-В конце добавь 2-3 совета специально под цель этого пользователя."""
-
-    return await ask_groq(prompt)
-
-# ─── onboarding keyboards ──────────────────────────────────────────────────────
-
-def kb_onboard_goal():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Набрать мышцы",  callback_data="ob_goal_muscle")],
-        [InlineKeyboardButton("Похудеть",        callback_data="ob_goal_lose")],
-        [InlineKeyboardButton("Общий тонус",     callback_data="ob_goal_tone")],
-    ])
-
-def kb_onboard_level():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Новичок — первый раз в зале",    callback_data="ob_level_beginner")],
-        [InlineKeyboardButton("Средний — занимался раньше",     callback_data="ob_level_middle")],
-        [InlineKeyboardButton("Продвинутый — занимаюсь давно", callback_data="ob_level_advanced")],
-    ])
-
-def kb_onboard_days():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("2 дня в неделю", callback_data="ob_days_2"),
-         InlineKeyboardButton("3 дня в неделю", callback_data="ob_days_3"),
-         InlineKeyboardButton("4 дня в неделю", callback_data="ob_days_4")],
-    ])
-
-def kb_onboard_place():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Тренажёрный зал",    callback_data="ob_place_gym")],
-        [InlineKeyboardButton("Дома (гантели/турник)", callback_data="ob_place_home")],
-        [InlineKeyboardButton("Зал или дома",        callback_data="ob_place_any")],
-    ])
-
-def kb_onboard_injuries():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Нет ограничений",        callback_data="ob_inj_none")],
-        [InlineKeyboardButton("Есть — напишу в чат",    callback_data="ob_inj_type")],
-    ])
-
-def kb_plan_accept():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Принять этот план и начать", callback_data="ob_accept")],
-        [InlineKeyboardButton("Использовать стандартный план", callback_data="ob_default")],
-    ])
-
-
 
 def text_today(user):
     dk = today_key()
@@ -507,181 +407,6 @@ def text_edit_ex_summary(ex, session):
 
 # ─── handlers ─────────────────────────────────────────────────────────────────
 
-async def generate_and_show_plan(q, user, data):
-    session = user.get("session") or {}
-    profile = session.get("profile", {})
-    try:
-        plan_text = await generate_plan_with_groq(profile)
-    except Exception as e:
-        plan_text = f"Не удалось получить ответ от ИИ: {e}"
-
-    user["session"] = {"msg_mode": "onboarding_review", "profile": profile, "ai_plan": plan_text}
-    save_data(data)
-
-    await q.edit_message_text(
-        f"*Вот твой персональный план:*\n\n{plan_text}\n\n"
-        "─────────────────\n"
-        "Принять этот план или использовать стандартный?",
-        parse_mode="Markdown",
-        reply_markup=kb_plan_accept()
-    )
-
-
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-    is_new = len(user["history"]) == 0 and not user["weights"] and not user.get("onboarded")
-    save_data(data)
-
-    if is_new:
-        user["session"] = {"msg_mode": "onboarding", "profile": {}}
-        save_data(data)
-        await update.message.reply_text(
-            "👋 Привет! Я твой личный тренировочный бот.\n\n"
-            "Прежде чем начать, давай составим план *именно под тебя*. "
-            "Отвечай на вопросы кнопками — займёт меньше минуты.\n\n"
-            "*Какова твоя цель?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_goal()
-        )
-    else:
-        await update.message.reply_text(
-            text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
-        )
-
-async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-    is_new = len(user["history"]) == 0 and not user["weights"] and not user.get("onboarded")
-    save_data(data)
-
-    if is_new:
-        user["session"] = {"msg_mode": "onboarding", "profile": {}}
-        save_data(data)
-        await update.message.reply_text(
-            "👋 Привет! Я твой личный тренировочный бот.\n\n"
-            "Прежде чем начать, давай составим план *именно под тебя*. "
-            "Отвечай на вопросы кнопками — займёт меньше минуты.\n\n"
-            "*Какова твоя цель?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_goal()
-        )
-    else:
-        await update.message.reply_text(
-            text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key())
-        )
-
-async def handle_cb(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    cb = q.data
-    data = load_data()
-    user = get_user(data, update.effective_user.id)
-    exercises = get_exercises(user)
-
-    # ── welcome → home ────────────────────────────────────────────────────────
-    if cb == "go_home":
-        await q.edit_message_text(text_today(user), parse_mode="Markdown", reply_markup=kb_today(today_key()))
-        return
-
-    # ── onboarding ────────────────────────────────────────────────────────────
-    if cb.startswith("ob_goal_"):
-        goal = cb[8:]
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["profile"]["goal"] = goal
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Отлично! Теперь скажи — *какой у тебя уровень подготовки?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_level()
-        )
-        return
-
-    if cb.startswith("ob_level_"):
-        level = cb[9:]
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["profile"]["level"] = level
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Понял! *Сколько дней в неделю готов тренироваться?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_days()
-        )
-        return
-
-    if cb.startswith("ob_days_"):
-        days = cb[8:]
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["profile"]["days"] = days
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Хорошо! *Где планируешь тренироваться?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_place()
-        )
-        return
-
-    if cb.startswith("ob_place_"):
-        place = cb[9:]
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["profile"]["place"] = place
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Почти готово! *Есть ли травмы или ограничения которые нужно учесть?*",
-            parse_mode="Markdown",
-            reply_markup=kb_onboard_injuries()
-        )
-        return
-
-    if cb == "ob_inj_none":
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["profile"]["injuries"] = "нет"
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Составляю твой персональный план тренировок...\n\n_Это займёт несколько секунд_ ⏳",
-            parse_mode="Markdown"
-        )
-        await generate_and_show_plan(q, user, data)
-        return
-
-    if cb == "ob_inj_type":
-        session = user.get("session") or {"msg_mode": "onboarding", "profile": {}}
-        session["msg_mode"] = "onboarding_injuries"
-        user["session"] = session
-        save_data(data)
-        await q.edit_message_text(
-            "Напиши в чат какие есть травмы или ограничения.\n\n_Например: болит колено, проблемы с поясницей_",
-            parse_mode="Markdown"
-        )
-        return
-
-    if cb == "ob_accept":
-        user["onboarded"] = True
-        user["session"] = None
-        save_data(data)
-        await q.edit_message_text(
-            "Отлично! План сохранён. Можешь в любой момент изменить упражнения во вкладке «План».\n\n"
-            "Удачных тренировок! 💪",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Перейти к тренировкам", callback_data="go_home")]])
-        )
-        return
-
-    if cb == "ob_default":
-        user["onboarded"] = True
-        user["session"] = None
-        save_data(data)
-        await q.edit_message_text(
-            "Хорошо, используем стандартный план Upper A / Lower / Upper B.\n\n"
-            "Можешь настроить упражнения во вкладке «План». Удачи! 💪",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Перейти к тренировкам", callback_data="go_home")]])
-        )
-        return
 
     # ── tabs ──────────────────────────────────────────────────────────────────
     if cb == "tab_today":
@@ -1091,36 +816,6 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     exercises = get_exercises(user)
     session = user.get("session")
     text = update.message.text.strip()
-
-    # onboarding — typing injuries
-    if session and session.get("msg_mode") == "onboarding_injuries":
-        session["profile"]["injuries"] = text
-        session["msg_mode"] = "onboarding"
-        user["session"] = session
-        save_data(data)
-        msg = await update.message.reply_text(
-            "Составляю твой персональный план тренировок...\n\n_Это займёт несколько секунд_ ⏳",
-            parse_mode="Markdown"
-        )
-
-        profile = session.get("profile", {})
-        try:
-            plan_text = await generate_plan_with_groq(profile)
-        except Exception as e:
-            plan_text = f"Не удалось получить ответ от ИИ: {e}"
-
-        user["session"] = {"msg_mode": "onboarding_review", "profile": profile, "ai_plan": plan_text}
-        save_data(data)
-
-        await msg.edit_text(
-            f"*Вот твой персональный план:*\n\n{plan_text}\n\n"
-            "─────────────────\n"
-            "Принять этот план или использовать стандартный?",
-            parse_mode="Markdown",
-            reply_markup=kb_plan_accept()
-        )
-        return
-
 
     if session and session.get("msg_mode") == "adding_ex":
         day_key = session["target_day"]
